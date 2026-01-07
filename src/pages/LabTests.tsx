@@ -5,7 +5,6 @@ import { LabTest } from '@/types/clinic';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Table,
   TableBody,
@@ -28,135 +27,179 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs';
-import { Search, TestTube, Clock, CheckCircle, AlertCircle, Upload, DollarSign, User, Plus } from 'lucide-react';
+import { Search, TestTube, Clock, CheckCircle, Upload, DollarSign, User, Plus, FileText, Play } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { LabTestRequestForm } from '@/components/lab/LabTestRequestForm';
+import { LabResultEntryForm, LabTestRequest } from '@/components/lab/LabResultEntryForm';
+
+// Mock lab requests (what OPD sends to lab)
+const mockLabRequests: LabTestRequest[] = [
+  {
+    id: 'REQ001',
+    patientId: 'P001',
+    patientName: 'John Smith',
+    requestedBy: 'Dr. Michael Chen',
+    requestDate: '2024-12-21T09:30:00',
+    priority: 'urgent',
+    clinicalNotes: 'Patient presenting with fatigue and dizziness. Rule out anemia.',
+    status: 'pending',
+    tests: [
+      { category: 'Hematology', items: ['WBC', 'Hgb', 'Hct', 'RBC', 'Platelet'] },
+      { category: 'Chemistry', items: ['FBS/RBS', 'Creatinine'] },
+    ],
+  },
+  {
+    id: 'REQ002',
+    patientId: 'P002',
+    patientName: 'Emily Davis',
+    requestedBy: 'Dr. Michael Chen',
+    requestDate: '2024-12-21T10:15:00',
+    priority: 'normal',
+    status: 'in-progress',
+    tests: [
+      { category: 'Urinalysis', items: ['Colour', 'PH', 'Protein', 'Sugar', 'HCG Test'] },
+    ],
+  },
+  {
+    id: 'REQ003',
+    patientId: 'P003',
+    patientName: 'Robert Wilson',
+    requestedBy: 'Dr. Michael Chen',
+    requestDate: '2024-12-21T08:00:00',
+    priority: 'normal',
+    clinicalNotes: 'Annual checkup - lipid profile',
+    status: 'completed',
+    tests: [
+      { category: 'Chemistry', items: ['Cholesterol', 'Triglycerides', 'HDL-C', 'LDL-C'] },
+    ],
+  },
+];
 
 export default function LabTests() {
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTest, setSelectedTest] = useState<LabTest | null>(null);
-  const [isResultDialogOpen, setIsResultDialogOpen] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<LabTestRequest | null>(null);
   const [isRequestFormOpen, setIsRequestFormOpen] = useState(false);
-  const [resultText, setResultText] = useState('');
+  const [isResultEntryOpen, setIsResultEntryOpen] = useState(false);
 
-  const getStatusIcon = (status: LabTest['status']) => {
-    const icons = {
-      'pending': <Clock className="h-4 w-4" />,
-      'in-progress': <TestTube className="h-4 w-4" />,
-      'completed': <CheckCircle className="h-4 w-4" />,
-    };
-    return icons[status];
-  };
+  const isOPD = user?.role === 'opd';
+  const isLab = user?.role === 'laboratory';
 
-  const getStatusColor = (status: LabTest['status']) => {
-    const colors = {
+  const getStatusColor = (status: string) => {
+    const colors: Record<string, string> = {
       'pending': 'bg-warning/10 text-warning border-warning/20',
       'in-progress': 'bg-info/10 text-info border-info/20',
       'completed': 'bg-success/10 text-success border-success/20',
     };
-    return colors[status];
+    return colors[status] || '';
   };
 
-  const filteredTests = mockLabTests.filter(test =>
-    test.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    test.testType.toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredRequests = mockLabRequests.filter(req =>
+    req.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    req.id.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const pendingTests = filteredTests.filter(t => t.status === 'pending');
-  const inProgressTests = filteredTests.filter(t => t.status === 'in-progress');
-  const completedTests = filteredTests.filter(t => t.status === 'completed');
-
-  const handleUploadResult = () => {
-    if (!resultText.trim()) {
-      toast.error('Please enter test results');
-      return;
-    }
-    toast.success('Test results uploaded successfully');
-    setIsResultDialogOpen(false);
-    setResultText('');
-    setSelectedTest(null);
-  };
+  const pendingRequests = filteredRequests.filter(r => r.status === 'pending');
+  const inProgressRequests = filteredRequests.filter(r => r.status === 'in-progress');
+  const completedRequests = filteredRequests.filter(r => r.status === 'completed');
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
-      year: 'numeric',
       month: 'short',
       day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
     });
   };
 
-  const TestTable = ({ tests, showActions = false }: { tests: LabTest[], showActions?: boolean }) => (
+  const handleStartTest = (request: LabTestRequest) => {
+    toast.success(`Started processing tests for ${request.patientName}`);
+  };
+
+  const handleEnterResults = (request: LabTestRequest) => {
+    setSelectedRequest(request);
+    setIsResultEntryOpen(true);
+  };
+
+  const getTotalTests = (request: LabTestRequest) => {
+    return request.tests.reduce((sum, cat) => sum + cat.items.length, 0);
+  };
+
+  // Request Table Component for Lab Staff
+  const RequestTable = ({ requests, showActions = false }: { requests: LabTestRequest[], showActions?: boolean }) => (
     <Table>
       <TableHeader>
         <TableRow className="bg-muted/50">
-          <TableHead>Test ID</TableHead>
+          <TableHead>Request ID</TableHead>
           <TableHead>Patient</TableHead>
-          <TableHead>Test Type</TableHead>
+          <TableHead>Tests Requested</TableHead>
           <TableHead>Requested By</TableHead>
           <TableHead>Date</TableHead>
-          <TableHead>Fee</TableHead>
-          <TableHead>Payment</TableHead>
+          <TableHead>Priority</TableHead>
           <TableHead>Status</TableHead>
           {showActions && <TableHead className="text-right">Actions</TableHead>}
         </TableRow>
       </TableHeader>
       <TableBody>
-        {tests.map((test) => (
-          <TableRow key={test.id} className="hover:bg-accent/50">
-            <TableCell className="font-mono text-sm text-primary">{test.id}</TableCell>
+        {requests.map((request) => (
+          <TableRow key={request.id} className={cn(
+            'hover:bg-accent/50',
+            request.priority === 'urgent' && 'bg-destructive/5'
+          )}>
+            <TableCell className="font-mono text-sm text-primary">{request.id}</TableCell>
             <TableCell>
               <div className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-secondary">
                   <User className="h-4 w-4 text-secondary-foreground" />
                 </div>
-                <span className="font-medium">{test.patientName}</span>
+                <span className="font-medium">{request.patientName}</span>
               </div>
             </TableCell>
-            <TableCell>{test.testType}</TableCell>
-            <TableCell className="text-muted-foreground">{test.requestedBy}</TableCell>
-            <TableCell>{formatDate(test.requestDate)}</TableCell>
-            <TableCell className="font-medium">${test.fee.toFixed(2)}</TableCell>
             <TableCell>
-              <Badge variant="outline" className={cn(
-                test.isPaid 
-                  ? 'bg-success/10 text-success border-success/20' 
-                  : 'bg-warning/10 text-warning border-warning/20'
-              )}>
-                <DollarSign className="h-3 w-3 mr-1" />
-                {test.isPaid ? 'Paid' : 'Pending'}
-              </Badge>
+              <div className="flex flex-wrap gap-1">
+                {request.tests.map(cat => (
+                  <Badge key={cat.category} variant="outline" className="text-xs">
+                    {cat.category} ({cat.items.length})
+                  </Badge>
+                ))}
+              </div>
+            </TableCell>
+            <TableCell className="text-muted-foreground">{request.requestedBy}</TableCell>
+            <TableCell className="text-sm">{formatDate(request.requestDate)}</TableCell>
+            <TableCell>
+              {request.priority === 'urgent' ? (
+                <Badge variant="destructive" className="animate-pulse">URGENT</Badge>
+              ) : (
+                <Badge variant="secondary">Normal</Badge>
+              )}
             </TableCell>
             <TableCell>
-              <Badge variant="outline" className={cn('gap-1', getStatusColor(test.status))}>
-                {getStatusIcon(test.status)}
-                <span className="capitalize">{test.status.replace('-', ' ')}</span>
+              <Badge variant="outline" className={cn('capitalize', getStatusColor(request.status))}>
+                {request.status.replace('-', ' ')}
               </Badge>
             </TableCell>
             {showActions && (
               <TableCell className="text-right">
                 <div className="flex justify-end gap-2">
-                  {test.status === 'pending' && test.isPaid && user?.role === 'laboratory' && (
-                    <Button size="sm" variant="outline" onClick={() => {
-                      toast.success('Test started');
-                    }}>
-                      Start Test
+                  {request.status === 'pending' && isLab && (
+                    <Button size="sm" variant="outline" onClick={() => handleStartTest(request)}>
+                      <Play className="h-4 w-4 mr-1" />
+                      Start
                     </Button>
                   )}
-                  {test.status === 'in-progress' && user?.role === 'laboratory' && (
-                    <Button size="sm" onClick={() => {
-                      setSelectedTest(test);
-                      setIsResultDialogOpen(true);
-                    }}>
+                  {request.status === 'in-progress' && isLab && (
+                    <Button size="sm" onClick={() => handleEnterResults(request)}>
                       <Upload className="h-4 w-4 mr-1" />
-                      Upload Result
+                      Enter Results
                     </Button>
                   )}
-                  {test.status === 'completed' && (
-                    <Button size="sm" variant="ghost" onClick={() => setSelectedTest(test)}>
-                      View Result
+                  {request.status === 'completed' && (
+                    <Button size="sm" variant="ghost" onClick={() => setSelectedRequest(request)}>
+                      <FileText className="h-4 w-4 mr-1" />
+                      View
                     </Button>
                   )}
                 </div>
@@ -169,21 +212,24 @@ export default function LabTests() {
   );
 
   return (
-    <DashboardLayout title="Laboratory Tests" subtitle="Manage and process lab test requests">
+    <DashboardLayout 
+      title={isLab ? "Laboratory Dashboard" : "Lab Tests"} 
+      subtitle={isLab ? "Process incoming test requests and report results" : "Request and track laboratory tests"}
+    >
       <div className="space-y-6">
-      {/* Search & Actions */}
+        {/* Search & Actions */}
         <div className="flex flex-col sm:flex-row gap-4 justify-between">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
-              placeholder="Search by patient or test type..."
+              placeholder="Search by patient or request ID..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-9"
             />
           </div>
           
-          {user?.role === 'opd' && (
+          {isOPD && (
             <Button onClick={() => setIsRequestFormOpen(true)} className="gap-2">
               <Plus className="h-4 w-4" />
               Request Lab Tests
@@ -198,8 +244,10 @@ export default function LabTests() {
               <Clock className="h-6 w-6 text-warning" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">{pendingTests.length}</p>
-              <p className="text-sm text-muted-foreground">Pending Tests</p>
+              <p className="text-2xl font-bold text-foreground">{pendingRequests.length}</p>
+              <p className="text-sm text-muted-foreground">
+                {isLab ? 'Awaiting Processing' : 'Pending Requests'}
+              </p>
             </div>
           </div>
           <div className="rounded-xl border border-info/20 bg-info/5 p-4 flex items-center gap-4">
@@ -207,7 +255,7 @@ export default function LabTests() {
               <TestTube className="h-6 w-6 text-info" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">{inProgressTests.length}</p>
+              <p className="text-2xl font-bold text-foreground">{inProgressRequests.length}</p>
               <p className="text-sm text-muted-foreground">In Progress</p>
             </div>
           </div>
@@ -216,7 +264,7 @@ export default function LabTests() {
               <CheckCircle className="h-6 w-6 text-success" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">{completedTests.length}</p>
+              <p className="text-2xl font-bold text-foreground">{completedRequests.length}</p>
               <p className="text-sm text-muted-foreground">Completed Today</p>
             </div>
           </div>
@@ -227,25 +275,25 @@ export default function LabTests() {
           <TabsList>
             <TabsTrigger value="pending" className="gap-2">
               <Clock className="h-4 w-4" />
-              Pending ({pendingTests.length})
+              {isLab ? 'Incoming' : 'Pending'} ({pendingRequests.length})
             </TabsTrigger>
             <TabsTrigger value="in-progress" className="gap-2">
               <TestTube className="h-4 w-4" />
-              In Progress ({inProgressTests.length})
+              In Progress ({inProgressRequests.length})
             </TabsTrigger>
             <TabsTrigger value="completed" className="gap-2">
               <CheckCircle className="h-4 w-4" />
-              Completed ({completedTests.length})
+              Completed ({completedRequests.length})
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="pending">
             <div className="rounded-xl border border-border bg-card shadow-card overflow-hidden">
-              <TestTable tests={pendingTests} showActions />
-              {pendingTests.length === 0 && (
+              <RequestTable requests={pendingRequests} showActions />
+              {pendingRequests.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                   <Clock className="h-12 w-12 mb-3 opacity-50" />
-                  <p>No pending tests</p>
+                  <p>{isLab ? 'No incoming requests' : 'No pending requests'}</p>
                 </div>
               )}
             </div>
@@ -253,8 +301,8 @@ export default function LabTests() {
 
           <TabsContent value="in-progress">
             <div className="rounded-xl border border-border bg-card shadow-card overflow-hidden">
-              <TestTable tests={inProgressTests} showActions />
-              {inProgressTests.length === 0 && (
+              <RequestTable requests={inProgressRequests} showActions />
+              {inProgressRequests.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                   <TestTube className="h-12 w-12 mb-3 opacity-50" />
                   <p>No tests in progress</p>
@@ -265,8 +313,8 @@ export default function LabTests() {
 
           <TabsContent value="completed">
             <div className="rounded-xl border border-border bg-card shadow-card overflow-hidden">
-              <TestTable tests={completedTests} showActions />
-              {completedTests.length === 0 && (
+              <RequestTable requests={completedRequests} showActions />
+              {completedRequests.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
                   <CheckCircle className="h-12 w-12 mb-3 opacity-50" />
                   <p>No completed tests</p>
@@ -276,91 +324,84 @@ export default function LabTests() {
           </TabsContent>
         </Tabs>
 
-        {/* Upload Result Dialog */}
-        <Dialog open={isResultDialogOpen} onOpenChange={setIsResultDialogOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Upload Test Results</DialogTitle>
-              <DialogDescription>
-                Enter the results for {selectedTest?.testType}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="rounded-lg bg-muted/50 p-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Patient</span>
-                  <span className="font-medium">{selectedTest?.patientName}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Test Type</span>
-                  <span className="font-medium">{selectedTest?.testType}</span>
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="result">Test Results</Label>
-                <Textarea
-                  id="result"
-                  placeholder="Enter detailed test results..."
-                  value={resultText}
-                  onChange={(e) => setResultText(e.target.value)}
-                  rows={6}
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-3">
-              <Button variant="outline" onClick={() => setIsResultDialogOpen(false)}>Cancel</Button>
-              <Button onClick={handleUploadResult}>
-                <Upload className="h-4 w-4 mr-2" />
-                Upload Results
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* View Result Dialog */}
-        <Dialog open={!!selectedTest && !isResultDialogOpen} onOpenChange={() => setSelectedTest(null)}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Test Results</DialogTitle>
-              <DialogDescription>
-                {selectedTest?.testType} for {selectedTest?.patientName}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="rounded-lg bg-muted/50 p-4 space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Test Date</span>
-                  <span className="font-medium">{selectedTest?.requestDate && formatDate(selectedTest.requestDate)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Result Date</span>
-                  <span className="font-medium">{selectedTest?.resultDate && formatDate(selectedTest.resultDate)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Requested By</span>
-                  <span className="font-medium">{selectedTest?.requestedBy}</span>
-                </div>
-              </div>
-              
-              <div className="space-y-2">
-                <Label>Results</Label>
-                <div className="rounded-lg border border-border p-4 bg-card">
-                  <p className="text-sm whitespace-pre-wrap">{selectedTest?.result || 'No results available'}</p>
-                </div>
-              </div>
-            </div>
-            <div className="flex justify-end">
-              <Button variant="outline" onClick={() => setSelectedTest(null)}>Close</Button>
-            </div>
-          </DialogContent>
-        </Dialog>
-
-        {/* Lab Test Request Form (OPD) */}
+        {/* Lab Test Request Form (OPD only) */}
         <LabTestRequestForm 
           open={isRequestFormOpen} 
           onOpenChange={setIsRequestFormOpen} 
         />
+
+        {/* Lab Result Entry Form (Lab only) */}
+        <LabResultEntryForm
+          open={isResultEntryOpen}
+          onOpenChange={setIsResultEntryOpen}
+          request={selectedRequest}
+        />
+
+        {/* View Request Details Dialog */}
+        <Dialog open={!!selectedRequest && !isResultEntryOpen} onOpenChange={() => setSelectedRequest(null)}>
+          <DialogContent className="max-w-2xl">
+            {selectedRequest && (
+              <>
+                <DialogHeader>
+                  <DialogTitle>Request Details - {selectedRequest.id}</DialogTitle>
+                  <DialogDescription>
+                    Lab test request for {selectedRequest.patientName}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-muted-foreground">Patient</p>
+                      <p className="font-medium">{selectedRequest.patientName}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Requested By</p>
+                      <p className="font-medium">{selectedRequest.requestedBy}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Date</p>
+                      <p className="font-medium">{formatDate(selectedRequest.requestDate)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-muted-foreground">Priority</p>
+                      <Badge variant={selectedRequest.priority === 'urgent' ? 'destructive' : 'secondary'}>
+                        {selectedRequest.priority}
+                      </Badge>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <p className="text-sm text-muted-foreground mb-2">Requested Tests</p>
+                    <div className="space-y-2">
+                      {selectedRequest.tests.map(cat => (
+                        <div key={cat.category} className="rounded-lg border border-border p-3">
+                          <p className="font-medium text-sm mb-1">{cat.category}</p>
+                          <div className="flex flex-wrap gap-1">
+                            {cat.items.map(test => (
+                              <Badge key={test} variant="outline" className="text-xs">
+                                {test}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {selectedRequest.clinicalNotes && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">Clinical Notes</p>
+                      <p className="text-sm bg-muted/50 p-3 rounded-lg">{selectedRequest.clinicalNotes}</p>
+                    </div>
+                  )}
+                </div>
+                <div className="flex justify-end">
+                  <Button variant="outline" onClick={() => setSelectedRequest(null)}>Close</Button>
+                </div>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   );
