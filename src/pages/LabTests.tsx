@@ -28,16 +28,18 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs';
-import { Search, TestTube, Clock, CheckCircle, AlertCircle, Upload, DollarSign, User } from 'lucide-react';
+import { Search, TestTube, Clock, CheckCircle, AlertCircle, Upload, DollarSign, User, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
+import { LabTestRequestForm } from '@/components/lab/LabTestRequestForm';
 
 export default function LabTests() {
   const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTest, setSelectedTest] = useState<LabTest | null>(null);
   const [isResultDialogOpen, setIsResultDialogOpen] = useState(false);
+  const [isRequestFormOpen, setIsRequestFormOpen] = useState(false);
   const [resultText, setResultText] = useState('');
 
   const getStatusIcon = (status: LabTest['status']) => {
@@ -169,8 +171,8 @@ export default function LabTests() {
   return (
     <DashboardLayout title="Laboratory Tests" subtitle="Manage and process lab test requests">
       <div className="space-y-6">
-        {/* Search */}
-        <div className="flex gap-4">
+      {/* Search & Actions */}
+        <div className="flex flex-col sm:flex-row gap-4 justify-between">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -180,6 +182,13 @@ export default function LabTests() {
               className="pl-9"
             />
           </div>
+          
+          {user?.role === 'opd' && (
+            <Button onClick={() => setIsRequestFormOpen(true)} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Request Lab Tests
+            </Button>
+          )}
         </div>
 
         {/* Stats */}
@@ -346,6 +355,12 @@ export default function LabTests() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Lab Test Request Form (OPD) */}
+        <LabTestRequestForm 
+          open={isRequestFormOpen} 
+          onOpenChange={setIsRequestFormOpen} 
+        />
       </div>
     </DashboardLayout>
   );
